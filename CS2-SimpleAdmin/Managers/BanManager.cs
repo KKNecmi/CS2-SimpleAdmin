@@ -441,4 +441,70 @@ public async Task UnbanPlayer(string playerPattern, string adminSteamId, string 
             CS2_SimpleAdmin._logger?.LogCritical("Unable to remove expired bans");
         }
     }
+
+    /// <summary>
+    /// Gets all active bans from the database.
+    /// </summary>
+    public async Task<List<BanInfo>> GetActiveBans()
+    {
+        if (databaseProvider == null) return [];
+        
+        var bans = new List<BanInfo>();
+        
+        try
+        {
+            await using var connection = await databaseProvider.CreateConnectionAsync();
+            
+            var sql = CS2_SimpleAdmin.Instance.Config.MultiServerMode
+                ? @"SELECT id, player_steamid, player_name, admin_steamid, admin_name, reason, duration, 
+                        created, ends, status
+                    FROM sa_bans 
+                    WHERE status = 'ACTIVE' 
+                    AND (duration = 0 OR ends > @CurrentTime)
+                    ORDER BY created DESC"
+                : @"SELECT id, player_steamid, player_name, admin_steamid, admin_name, reason, duration, 
+                        created, ends, status
+                    FROM sa_bans 
+                    WHERE status = 'ACTIVE' 
+                    AND (duration = 0 OR ends > @CurrentTime) 
+                    AND server_id = @ServerId
+                    ORDER BY created DESC";
+            
+            var currentTime = Time.ActualDateTime();
+            
+            bans = (await connection.QueryAsync<BanInfo>(sql, new 
+            { 
+                CurrentTime = currentTime,
+                ServerId = CS2_SimpleAdmin.ServerId 
+            })).ToList();
+        }
+        catch (Exception ex)
+        {
+            CS2_SimpleAdmin._logger?.LogError(ex, "Error getting active bans");
+        }
+        
+        return bans;
+    }
+
+    public class BanInfo
+    {
+        public int Id { get; set; }
+        public ulong player_steamid { get; set; }
+        public string? player_name { get; set; }
+        public ulong? admin_steamid { get; set; }
+        public string? admin_name { get; set; }
+        public string? reason { get; set; }
+        public int Duration { get; set; }      // Changed to uppercase
+        public DateTime Created { get; set; }  // Changed to uppercase
+        public DateTime Ends { get; set; }     // Changed to uppercase
+        public string? status { get; set; }
+        
+        public string SteamId => player_steamid.ToString();
+        public string PlayerName => player_name ?? "Unknown";
+        public string AdminName => admin_name ?? "Console";
+        public string Reason => reason ?? "Unknown";
+        public bool IsPermanent => Duration == 0;
+        public DateTime CreatedDate => Created;
+        public DateTime ExpiryDate => Ends;
+    }
 }

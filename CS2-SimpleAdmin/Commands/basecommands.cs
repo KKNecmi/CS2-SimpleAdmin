@@ -24,6 +24,89 @@ namespace CS2_SimpleAdmin;
 
 public partial class CS2_SimpleAdmin
 {
+    public void OnBanListCommand(CCSPlayerController? caller, CommandInfo command)
+    {
+        if (caller == null || !caller.IsValid) return;
+        if (DatabaseProvider == null)
+        {
+            caller.PrintToChat("Database not available");
+            return;
+        }
+
+        Task.Run(async () =>
+        {
+            var activeBans = await BanManager.GetActiveBans();
+            
+            await Server.NextWorldUpdateAsync(() =>
+            {
+                if (activeBans.Count == 0)
+                {
+                    caller.PrintToChat("No active bans found.");
+                    return;
+                }
+
+                var banMenu = Helper.CreateMenu(_localizer?["sa_menu_banlist_title"] ?? "Ban List");
+                if (banMenu == null) return;
+
+                foreach (var ban in activeBans)
+                {
+                    string playerName = string.IsNullOrEmpty(ban.PlayerName) ? "Unknown" : ban.PlayerName;
+                    string expiryInfo = ban.IsPermanent 
+                        ? "Permanent" 
+                        : $"Expires: {ban.ExpiryDate.ToLocalTime():yyyy-MM-dd HH:mm}";
+                    
+                    banMenu.AddMenuOption($"{playerName} | {expiryInfo}", (_, _) =>
+                    {
+                        var detailMenu = Helper.CreateMenu($"Ban Details: {playerName}");
+                        if (detailMenu == null) return;
+
+                        detailMenu.AddMenuOption($"SteamID: {ban.SteamId}", (_, _) => { });
+                        detailMenu.AddMenuOption($"Reason: {ban.Reason}", (_, _) => { });
+                        detailMenu.AddMenuOption($"Banned by: {ban.AdminName ?? "Console"}", (_, _) => { });
+                        detailMenu.AddMenuOption($"Date: {ban.CreatedDate.ToLocalTime():yyyy-MM-dd HH:mm}", (_, _) => { });
+                        detailMenu.AddMenuOption($"Duration: {(ban.IsPermanent ? "Permanent" : $"{ban.Duration} minutes")}", (_, _) => { });
+                        
+                        if (AdminManager.PlayerHasPermissions(new SteamID(caller.SteamID), "@css/unban"))
+                        {
+                            detailMenu.AddMenuOption("Unban", (_, _) =>
+                            {
+                                OpenUnbanReasonMenu(caller, ban, banMenu);
+                            });
+                        }
+                        
+                        detailMenu?.Open(caller);
+                    });
+                }
+                
+                banMenu?.Open(caller);
+            });
+        });
+    }
+
+    private void OpenUnbanReasonMenu(CCSPlayerController caller, BanManager.BanInfo ban, IMenu parentMenu)
+    {
+        var reasonMenu = Helper.CreateMenu("Select Unban Reason");
+        if (reasonMenu == null) return;
+
+        var reasons = new[] { "Appeal accepted", "Wrongful ban", "Time served", "Admin discretion", "Other" };
+        
+        foreach (var reason in reasons)
+        {
+            reasonMenu?.AddMenuOption(reason, async (_, _) =>
+            {
+                await BanManager.UnbanPlayer(ban.SteamId, caller.SteamID.ToString(), reason);
+                caller.PrintToChat($"Unbanned {ban.PlayerName} ({ban.SteamId}) - Reason: {reason}");
+                
+                await Server.NextWorldUpdateAsync(() =>
+                {
+                    OnBanListCommand(caller, null!);
+                });
+            });
+        }
+        
+        reasonMenu?.Open(caller);
+    }
+    
     /// <summary>
     /// Handles the command that shows active penalties and warns for the caller or specified player.
     /// Queries warnings and mute status, formats them locally, and sends the result to caller's chat.
@@ -507,7 +590,7 @@ public partial class CS2_SimpleAdmin
             var adminsFile = await File.ReadAllTextAsync(Instance.ModuleDirectory + "/data/admins.json");
             var groupsFile = await File.ReadAllTextAsync(Instance.ModuleDirectory + "/data/groups.json");
             
-               await Server.NextWorldUpdateAsync(() =>
+            await Server.NextWorldUpdateAsync(() =>
             {
                 AddTimer(1, () =>
                 {

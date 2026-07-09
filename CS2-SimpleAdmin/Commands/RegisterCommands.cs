@@ -31,6 +31,7 @@ public static class RegisterCommands
         new("css_csay", CS2_SimpleAdmin.Instance.OnAdminCenterSayCommand),
         new("css_hsay", CS2_SimpleAdmin.Instance.OnAdminHudSayCommand),
 
+        new("css_banlist", CS2_SimpleAdmin.Instance.OnBanListCommand),
         new("css_penalties", CS2_SimpleAdmin.Instance.OnPenaltiesCommand),
         new("css_admin", CS2_SimpleAdmin.Instance.OnAdminCommand),
         new("css_adminhelp", CS2_SimpleAdmin.Instance.OnAdminHelpCommand),
